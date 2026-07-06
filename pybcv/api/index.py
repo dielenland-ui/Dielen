@@ -2,20 +2,16 @@ from http.server import BaseHTTPRequestHandler
 import json
 import os
 import sys
+import importlib.util
 
-# 1. FIX DE RUTAS ABSOLUTAS: Detectar con precisión dónde está corriendo el servidor
+# 1. Configurar rutas absolutas base
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-LIB_DIR = os.path.join(BASE_DIR, 'pybcv')
-
-# Inyectar las rutas en el sistema de búsqueda de Python en orden de prioridad
+# Forzar a Python a reconocer la carpeta raíz de la función
 if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
-if LIB_DIR not in sys.path:
-    sys.path.insert(0, LIB_DIR)
 
 class handler(BaseHTTPRequestHandler):
     def do_GET(self):
-        # Configuración de cabeceras seguras para VentaChévere (Evita bloqueos de CORS)
         self.send_response(200)
         self.send_header('Content-type', 'application/json')
         self.send_header('Access-Control-Allow-Origin', '*')
@@ -24,38 +20,36 @@ class handler(BaseHTTPRequestHandler):
         self.end_headers()
         
         try:
-            # Importación directa desde el archivo core de la librería local
-            from tasas_de_cambios import PyBCV
-            bcv = PyBCV()
+            # 2. Carga dinámica absoluta para burlar el error de paquete relativo
+            ruta_tasas = os.path.join(BASE_DIR, 'pybcv', 'tasas_de_cambios.py')
             
-            # Obtener los datos oficiales del BCV en tiempo real
-            dolar_bcv = bcv.get_rate(currency_code='USD')
-            euro_bcv = bcv.get_rate(currency_code='EUR')
+            # Definimos el nombre del módulo simulando la jerarquía completa
+            especificacion = importlib.util.spec_from_file_location("pybcv.tasas_de_cambios", ruta_tasas)
+            modulo_tasas = importlib.util.module_from_spec(especificacion)
             
-            # Respuesta exitosa estructurada en JSON limpio
+            # Registramos el módulo formalmente en el sistema antes de ejecutarlo
+            sys.modules["pybcv.tasas_de_cambios"] = modulo_tasas
+            especificacion.loader.exec_module(modulo_tasas)
+            
+            # Instanciamos la clase de tu carpeta local
+            bcv = modulo_tasas.PyBCV()
+            
+            # Extraemos los datos del BCV
             response_data = {
                 "status": "success",
-                "dolar": dolar_bcv,
-                "euro": euro_bcv
+                "dolar": bcv.get_rate(currency_code='USD'),
+                "euro": bcv.get_rate(currency_code='EUR')
             }
             
-        except ImportError as ie:
-            response_data = {
-                "status": "error",
-                "message": f"Error crítico de importación. Verifica que los archivos (.py) de la segunda foto estén dentro de api/pybcv/. Detalle: {str(ie)}",
-                "clase_error": "ImportError"
-            }
         except Exception as e:
             response_data = {
                 "status": "error",
-                "message": f"Fallo al conectar o extraer datos del BCV: {str(e)}",
+                "message": f"Error en ejecución del empaquetado: {str(e)}",
                 "clase_error": str(type(e).__name__)
             }
 
-        # Retornar el resultado al navegador/frontend
         self.wfile.write(json.dumps(response_data).encode('utf-8'))
 
-    # Manejar peticiones previas que hacen los navegadores por seguridad (Preflight requests)
     def do_OPTIONS(self):
         self.send_response(200)
         self.send_header('Access-Control-Allow-Origin', '*')
