@@ -3,33 +3,35 @@ import json
 import os
 import sys
 
-# Forzar a Python a buscar librerías dentro de la carpeta 'api'
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+# Obtener la ruta exacta de la carpeta donde está este archivo (api/)
+ruta_api = os.path.dirname(os.path.abspath(__file__))
+
+# Forzar a Python a mirar dentro de 'api' y dentro de 'api/pybcv'
+sys.path.append(ruta_api)
+sys.path.append(os.path.join(ruta_api, 'pybcv'))
 
 class handler(BaseHTTPRequestHandler):
     def do_GET(self):
-        # Cabeceras para permitir que VentaChévere consulte sin bloqueos de CORS
         self.send_response(200)
         self.send_header('Content-type', 'application/json')
         self.send_header('Access-Control-Allow-Origin', '*') 
         self.end_headers()
         
         try:
-            # Importamos desde la carpeta local que acabas de subir
-            from pybcv import PyBCV
+            # Importamos directamente la clase PyBCV desde el archivo tasas_de_cambios.py
+            # Esto se salta el intermediario de __init__.py si está generando conflicto
+            from tasas_de_cambios import PyBCV
             bcv = PyBCV()
             
-            # Extraemos las tasas usando los métodos nativos de tu carpeta
             tasas_data = {
                 "status": "success",
                 "dolar": bcv.get_rate(currency_code='USD'),
                 "euro": bcv.get_rate(currency_code='EUR')
             }
         except Exception as e:
-            # Si el código local falla por alguna razón, capturamos el error real
             tasas_data = {
                 "status": "error",
-                "message": f"Fallo en la librería local: {str(e)}",
+                "message": f"Error ejecutando modulo directo: {str(e)}",
                 "clase_error": str(type(e).__name__)
             }
 
