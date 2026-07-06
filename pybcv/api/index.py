@@ -3,36 +3,62 @@ import json
 import os
 import sys
 
-# Obtener la ruta exacta de la carpeta donde está este archivo (api/)
-ruta_api = os.path.dirname(os.path.abspath(__file__))
+# 1. FIX DE RUTAS ABSOLUTAS: Detectar con precisión dónde está corriendo el servidor
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+LIB_DIR = os.path.join(BASE_DIR, 'pybcv')
 
-# Forzar a Python a mirar dentro de 'api' y dentro de 'api/pybcv'
-sys.path.append(ruta_api)
-sys.path.append(os.path.join(ruta_api, 'pybcv'))
+# Inyectar las rutas en el sistema de búsqueda de Python en orden de prioridad
+if BASE_DIR not in sys.path:
+    sys.path.insert(0, BASE_DIR)
+if LIB_DIR not in sys.path:
+    sys.path.insert(0, LIB_DIR)
 
 class handler(BaseHTTPRequestHandler):
     def do_GET(self):
+        # Configuración de cabeceras seguras para VentaChévere (Evita bloqueos de CORS)
         self.send_response(200)
         self.send_header('Content-type', 'application/json')
-        self.send_header('Access-Control-Allow-Origin', '*') 
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Access-Control-Allow-Methods', 'GET, OPTIONS')
+        self.send_header('Access-Control-Allow-Headers', 'Content-Type')
         self.end_headers()
         
         try:
-            # Importamos directamente la clase PyBCV desde el archivo tasas_de_cambios.py
-            # Esto se salta el intermediario de __init__.py si está generando conflicto
+            # Importación directa desde el archivo core de la librería local
             from tasas_de_cambios import PyBCV
             bcv = PyBCV()
             
-            tasas_data = {
+            # Obtener los datos oficiales del BCV en tiempo real
+            dolar_bcv = bcv.get_rate(currency_code='USD')
+            euro_bcv = bcv.get_rate(currency_code='EUR')
+            
+            # Respuesta exitosa estructurada en JSON limpio
+            response_data = {
                 "status": "success",
-                "dolar": bcv.get_rate(currency_code='USD'),
-                "euro": bcv.get_rate(currency_code='EUR')
+                "dolar": dolar_bcv,
+                "euro": euro_bcv
+            }
+            
+        except ImportError as ie:
+            response_data = {
+                "status": "error",
+                "message": f"Error crítico de importación. Verifica que los archivos (.py) de la segunda foto estén dentro de api/pybcv/. Detalle: {str(ie)}",
+                "clase_error": "ImportError"
             }
         except Exception as e:
-            tasas_data = {
+            response_data = {
                 "status": "error",
-                "message": f"Error ejecutando modulo directo: {str(e)}",
+                "message": f"Fallo al conectar o extraer datos del BCV: {str(e)}",
                 "clase_error": str(type(e).__name__)
             }
 
-        self.wfile.write(json.dumps(tasas_data).encode('utf-8'))
+        # Retornar el resultado al navegador/frontend
+        self.wfile.write(json.dumps(response_data).encode('utf-8'))
+
+    # Manejar peticiones previas que hacen los navegadores por seguridad (Preflight requests)
+    def do_OPTIONS(self):
+        self.send_response(200)
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Access-Control-Allow-Methods', 'GET, OPTIONS')
+        self.send_header('Access-Control-Allow-Headers', 'Content-Type')
+        self.end_headers()
