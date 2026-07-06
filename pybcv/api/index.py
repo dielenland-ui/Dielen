@@ -4,7 +4,7 @@ import os
 import sys
 import importlib.util
 
-# Configurar rutas absolutas base adaptadas al entorno de Vercel
+# 1. Configurar rutas absolutas locales dentro de la carpeta 'api'
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
@@ -20,19 +20,20 @@ class handler(BaseHTTPRequestHandler):
         self.end_headers()
         
         try:
-            # Forzar la carga dinámica usando el nombre exacto de tu carpeta: pyBCV
-            ruta_tasas = os.path.join(BASE_DIR, 'pyBCV', 'tasas_de_cambios.py')
+            # 2. Carga dinámica absoluta apuntando a 'api/pybcv/tasas_de_cambios.py'
+            ruta_tasas = os.path.join(BASE_DIR, 'pybcv', 'tasas_de_cambios.py')
             
-            especificacion = importlib.util.spec_from_file_location("pyBCV.tasas_de_cambios", ruta_tasas)
+            # Simulamos el espacio de nombres padre para resolver los 'from ._requests' internos
+            especificacion = importlib.util.spec_from_file_location("pybcv.tasas_de_cambios", ruta_tasas)
             modulo_tasas = importlib.util.module_from_spec(especificacion)
             
-            sys.modules["pyBCV.tasas_de_cambios"] = modulo_tasas
+            sys.modules["pybcv.tasas_de_cambios"] = modulo_tasas
             especificacion.loader.exec_module(modulo_tasas)
             
-            # Instanciar la clase nativa de la librería
+            # Instanciar la clase nativa de la librería local
             bcv = modulo_tasas.PyBCV()
             
-            # Formatear la respuesta JSON con las tasas del día en tiempo real
+            # Formatear la respuesta JSON con las tasas en tiempo real
             response_data = {
                 "status": "success",
                 "dolar": bcv.get_rate(currency_code='USD'),
